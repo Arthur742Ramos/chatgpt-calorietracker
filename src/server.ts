@@ -19,6 +19,14 @@ import {
   handleSetGoals,
   deleteMealTool,
   handleDeleteMeal,
+  getGoalsTool,
+  handleGetGoals,
+  getMealsTool,
+  handleGetMeals,
+  updateMealTool,
+  handleUpdateMeal,
+  quickAddTool,
+  handleQuickAdd,
 } from "./tools/index.js";
 
 const PORT = parseInt(process.env.PORT || "3000", 10);
@@ -46,6 +54,10 @@ mcpServer.setRequestHandler(ListToolsRequestSchema, async () => {
       getWeeklyReportTool,
       setGoalsTool,
       deleteMealTool,
+      getGoalsTool,
+      getMealsTool,
+      updateMealTool,
+      quickAddTool,
     ],
   };
 });
@@ -85,6 +97,18 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
       case "delete_meal":
         return await handleDeleteMeal(args as Parameters<typeof handleDeleteMeal>[0], userId);
 
+      case "get_goals":
+        return await handleGetGoals(args as Parameters<typeof handleGetGoals>[0], userId);
+
+      case "get_meals":
+        return await handleGetMeals(args as Parameters<typeof handleGetMeals>[0], userId);
+
+      case "update_meal":
+        return await handleUpdateMeal(args as Parameters<typeof handleUpdateMeal>[0], userId);
+
+      case "quick_add":
+        return await handleQuickAdd(args as Parameters<typeof handleQuickAdd>[0], userId);
+
       default:
         return {
           content: [
@@ -111,7 +135,7 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
 });
 
 // Express app for HTTP transport and serving UI components
-const app = express();
+export const app = express();
 app.use(express.json());
 
 // Health check endpoint
@@ -154,6 +178,10 @@ app.post("/mcp/tools", async (req, res) => {
     getWeeklyReportTool,
     setGoalsTool,
     deleteMealTool,
+    getGoalsTool,
+    getMealsTool,
+    updateMealTool,
+    quickAddTool,
   ];
 
   res.json({ tools });
@@ -189,6 +217,18 @@ app.post("/mcp/execute", async (req, res) => {
       case "delete_meal":
         result = await handleDeleteMeal(args, userId);
         break;
+      case "get_goals":
+        result = await handleGetGoals(args, userId);
+        break;
+      case "get_meals":
+        result = await handleGetMeals(args, userId);
+        break;
+      case "update_meal":
+        result = await handleUpdateMeal(args, userId);
+        break;
+      case "quick_add":
+        result = await handleQuickAdd(args, userId);
+        break;
       default:
         res.status(400).json({ error: `Unknown tool: ${tool}` });
         return;
@@ -210,7 +250,7 @@ app.options("*", (_req, res) => {
 });
 
 // Start server
-async function main() {
+export async function main() {
   // Initialize Cosmos DB connection
   if (process.env.COSMOS_ENDPOINT && process.env.COSMOS_KEY) {
     await initCosmos();
@@ -235,4 +275,7 @@ async function main() {
   }
 }
 
-main().catch(console.error);
+// Only start server when run directly (not when imported for testing)
+if (process.env.NODE_ENV !== "test" && !process.env.VITEST) {
+  main().catch(console.error);
+}

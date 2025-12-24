@@ -48,7 +48,11 @@ src/
 │   ├── get-summary.ts  # get_daily_summary tool
 │   ├── get-weekly-report.ts  # get_weekly_report tool
 │   ├── set-goals.ts    # set_goals tool
+│   ├── get-goals.ts    # get_goals tool
 │   ├── delete-meal.ts  # delete_meal tool
+│   ├── get-meals.ts    # get_meals tool
+│   ├── update-meal.ts  # update_meal tool
+│   ├── quick-add.ts    # quick_add tool
 │   └── index.ts        # Tool registry and exports
 └── ui/                 # React components for rich displays (optional)
     └── components/     # DailySummary, MealCard, WeeklyChart, etc.
@@ -129,6 +133,60 @@ Remove a previously logged meal.
 - `mealId` (string, required): UUID of the meal to delete
 
 **Output:** Deleted meal details (date, type, calories, foods)
+
+### get_goals
+Get the user's current daily nutrition goals.
+
+**Input:** None
+
+**Output:** Current goals (or defaults if not set), macro percentages, last updated timestamp
+
+**Usage:** Check current goals before suggesting changes with set_goals.
+
+### get_meals
+List logged meals for a specific date or date range.
+
+**Input:**
+- `date` (string, optional): YYYY-MM-DD format, defaults to today
+- `startDate` (string, optional): Start of date range
+- `endDate` (string, optional): End of date range
+
+**Output:** List of meals with full details (foods, nutrition, totals)
+
+**Usage:** Use to review what was logged, find meal IDs for update_meal, or check meal details.
+
+### update_meal
+Modify an existing logged meal.
+
+**Input:**
+- `mealId` (string, required): UUID of the meal to update
+- `addFoods` (array, optional): Foods to add `[{ fdcId, servings }]`
+- `removeFoodIds` (array, optional): FDC IDs of foods to remove
+- `updateServings` (array, optional): Change servings `[{ fdcId, servings }]`
+- `mealType` (string, optional): Change meal type
+- `notes` (string, optional): Update notes
+
+**Output:** Updated meal with changes summary
+
+**Usage:** Fix mistakes without deleting and re-logging. Use get_meals first to find meal IDs.
+
+### quick_add
+Log calories and macros directly without searching the food database.
+
+**Input:**
+- `description` (string, required): What you ate (e.g., "Restaurant burger")
+- `calories` (number, required): Total calories
+- `protein` (number, optional): Grams of protein
+- `carbs` (number, optional): Grams of carbohydrates
+- `fat` (number, optional): Grams of fat
+- `fiber` (number, optional): Grams of fiber
+- `mealType` (string, required): "breakfast" | "lunch" | "dinner" | "snack"
+- `date` (string, optional): YYYY-MM-DD format, defaults to today
+- `notes` (string, optional): Additional notes
+
+**Output:** Logged meal with custom entry
+
+**Usage:** Perfect for restaurant meals, homemade food, or items not in the USDA database.
 
 ## Data Models
 

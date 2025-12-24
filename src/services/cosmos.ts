@@ -101,6 +101,11 @@ export async function getMealsByDateRange(
   return resources;
 }
 
+export async function updateMeal(meal: Meal): Promise<Meal> {
+  const { resource } = await mealsContainer.items.upsert<Meal>(meal);
+  return resource!;
+}
+
 export async function deleteMeal(
   userId: string,
   mealId: string
