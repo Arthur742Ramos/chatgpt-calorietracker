@@ -51,10 +51,16 @@ jobs:
             az containerapp secret set \
               --name calorietracker-dev-app \
               --resource-group rg-calorie-tracker-westus2 \
-              --secrets usda-api-key=${{ secrets.USDA_API_KEY }}
+              --secrets \
+                usda-api-key=${{ secrets.USDA_API_KEY }} \
+                cosmos-key=${{ secrets.COSMOS_KEY }}
             az containerapp update \
               --name calorietracker-dev-app \
               --resource-group rg-calorie-tracker-westus2 \
-              --set-env-vars USDA_API_KEY=secretref:usda-api-key
+              --set-env-vars \
+                USDA_API_KEY=secretref:usda-api-key \
+                COSMOS_ENDPOINT=${{ secrets.COSMOS_ENDPOINT }} \
+                COSMOS_KEY=secretref:cosmos-key \
+                COSMOS_DATABASE=${{ secrets.COSMOS_DATABASE }}
 
 
