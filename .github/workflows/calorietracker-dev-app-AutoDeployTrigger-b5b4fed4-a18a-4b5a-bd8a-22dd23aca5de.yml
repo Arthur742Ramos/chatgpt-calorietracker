@@ -1,0 +1,49 @@
+name: Trigger auto deployment for calorietracker-dev-app
+
+# When this action will be executed
+on:
+  # Automatically trigger it when detected changes in repo
+  push:
+    branches: 
+      [ main ]
+    paths:
+    - '**'
+    - '.github/workflows/calorietracker-dev-app-AutoDeployTrigger-b5b4fed4-a18a-4b5a-bd8a-22dd23aca5de.yml'
+
+  # Allow manual trigger 
+  workflow_dispatch:      
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions: 
+      id-token: write #This is required for requesting the OIDC JWT Token
+      contents: read #Required when GH token is used to authenticate with private repo
+
+    steps:
+      - name: Checkout to the branch
+        uses: actions/checkout@v2
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.CALORIETRACKERDEVAPP_AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.CALORIETRACKERDEVAPP_AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.CALORIETRACKERDEVAPP_AZURE_SUBSCRIPTION_ID }}
+
+      - name: Build and push container image to registry
+        uses: azure/container-apps-deploy-action@v2
+        with:
+          appSourcePath: ${{ github.workspace }}
+          _dockerfilePathKey_: _dockerfilePath_
+          _targetLabelKey_: _targetLabel_
+          registryUrl: calorietrackerdevthqmrjwwmnude.azurecr.io
+          registryUsername: ${{ secrets.CALORIETRACKERDEVAPP_REGISTRY_USERNAME }}
+          registryPassword: ${{ secrets.CALORIETRACKERDEVAPP_REGISTRY_PASSWORD }}
+          containerAppName: calorietracker-dev-app
+          resourceGroup: rg-calorie-tracker-westus2
+          imageToBuild: calorietrackerdevthqmrjwwmnude.azurecr.io/calorietracker-dev-app:${{ github.sha }}
+          _buildArgumentsKey_: |
+            _buildArgumentsValues_
+
+
