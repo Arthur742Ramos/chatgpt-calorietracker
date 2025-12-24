@@ -35,15 +35,26 @@ jobs:
         uses: azure/container-apps-deploy-action@v2
         with:
           appSourcePath: ${{ github.workspace }}
-          _dockerfilePathKey_: _dockerfilePath_
-          _targetLabelKey_: _targetLabel_
+          dockerfilePath: ./Dockerfile
           registryUrl: calorietrackerdevthqmrjwwmnude.azurecr.io
           registryUsername: ${{ secrets.CALORIETRACKERDEVAPP_REGISTRY_USERNAME }}
           registryPassword: ${{ secrets.CALORIETRACKERDEVAPP_REGISTRY_PASSWORD }}
           containerAppName: calorietracker-dev-app
           resourceGroup: rg-calorie-tracker-westus2
           imageToBuild: calorietrackerdevthqmrjwwmnude.azurecr.io/calorietracker-dev-app:${{ github.sha }}
-          _buildArgumentsKey_: |
-            _buildArgumentsValues_
+          environmentVariables: USDA_API_KEY=secretref:usda-api-key
+
+      - name: Update Container App secrets
+        uses: azure/cli@v2
+        with:
+          inlineScript: |
+            az containerapp secret set \
+              --name calorietracker-dev-app \
+              --resource-group rg-calorie-tracker-westus2 \
+              --secrets usda-api-key=${{ secrets.USDA_API_KEY }}
+            az containerapp update \
+              --name calorietracker-dev-app \
+              --resource-group rg-calorie-tracker-westus2 \
+              --set-env-vars USDA_API_KEY=secretref:usda-api-key
 
 
