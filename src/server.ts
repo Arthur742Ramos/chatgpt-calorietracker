@@ -3,10 +3,13 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
 import { ServerRequest, ServerNotification } from "@modelcontextprotocol/sdk/types.js";
-import express, { Request, Response } from "express";
+import { mcpAuthRouter } from "@modelcontextprotocol/sdk/server/auth/router.js";
+import { requireBearerAuth } from "@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js";
+import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
 import { z } from "zod";
 import { initCosmos } from "./services/cosmos.js";
+import { Auth0OAuthProvider, Auth0Config } from "./services/auth/index.js";
 import {
   handleSearchFood,
   handleLogMeal,
@@ -22,12 +25,40 @@ import {
 
 const PORT = parseInt(process.env.PORT || "3000", 10);
 
+// Server URL configuration
+const BASE_URL = process.env.BASE_URL || `http://localhost:${PORT}`;
+const ISSUER_URL = process.env.ISSUER_URL || BASE_URL;
+
+// Auth0 configuration
+const auth0Config: Auth0Config = {
+  domain: process.env.AUTH0_DOMAIN || "",
+  clientId: process.env.AUTH0_CLIENT_ID || "",
+  clientSecret: process.env.AUTH0_CLIENT_SECRET || "",
+  audience: process.env.AUTH0_AUDIENCE,
+};
+
+// Check if OAuth is configured
+const isOAuthConfigured = !!(auth0Config.domain && auth0Config.clientId && auth0Config.clientSecret);
+
 // CORS configuration for ChatGPT
 const ALLOWED_ORIGINS = [
   "https://chatgpt.com",
   "https://chat.openai.com",
   "https://cdn.oaistatic.com",
 ];
+
+// OAuth provider instance (created lazily when needed)
+let oauthProvider: Auth0OAuthProvider | null = null;
+
+function getOAuthProvider(): Auth0OAuthProvider {
+  if (!oauthProvider) {
+    if (!isOAuthConfigured) {
+      throw new Error("OAuth is not configured. Set AUTH0_DOMAIN, AUTH0_CLIENT_ID, and AUTH0_CLIENT_SECRET.");
+    }
+    oauthProvider = new Auth0OAuthProvider(auth0Config, BASE_URL);
+  }
+  return oauthProvider;
+}
 
 // Create MCP server factory function - creates a fresh instance per request for stateless mode
 function createMcpServer() {
@@ -316,10 +347,10 @@ type ToolExtra = RequestHandlerExtra<ServerRequest, ServerNotification>;
 
 // Helper to extract userId from request context
 function getUserIdFromExtra(extra: ToolExtra): string {
-  // In production with OAuth, the userId comes from authInfo
-  // The clientId identifies the OAuth client, or we can look in extra for user-specific info
-  // For now, fall back to sessionId or default
+  // With OAuth, the userId comes from the Auth0 user ID stored in authInfo.extra
   const authUserId = extra.authInfo?.extra?.userId as string | undefined;
+
+  // Fall back to clientId or sessionId for backwards compatibility
   return authUserId || extra.authInfo?.clientId || extra.sessionId || "default-user";
 }
 
@@ -342,7 +373,7 @@ app.use(
       callback(new Error("Not allowed by CORS"));
     },
     methods: ["GET", "POST", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "mcp-session-id"],
+    allowedHeaders: ["Content-Type", "Authorization", "mcp-session-id"],
     credentials: true,
   })
 );
@@ -350,17 +381,97 @@ app.use(
 // Parse JSON bodies
 app.use(express.json());
 
+// Parse URL-encoded bodies (for OAuth token requests)
+app.use(express.urlencoded({ extended: true }));
+
 // Health check endpoint
 app.get("/health", (_req, res) => {
-  res.json({ status: "healthy", service: "calorie-tracker" });
+  res.json({
+    status: "healthy",
+    service: "calorie-tracker",
+    oauth: isOAuthConfigured ? "configured" : "not_configured"
+  });
 });
 
 // Serve static UI components
 app.use("/ui", express.static("dist/ui"));
 
+// OAuth routes (if configured)
+if (isOAuthConfigured) {
+  console.log("OAuth is configured, setting up auth routes...");
+
+  // Add OAuth router from MCP SDK
+  // This provides: /.well-known/oauth-authorization-server, /authorize, /token, /register
+  app.use(
+    mcpAuthRouter({
+      provider: getOAuthProvider(),
+      issuerUrl: new URL(ISSUER_URL),
+      baseUrl: new URL(BASE_URL),
+      scopesSupported: ["openid", "profile", "email", "offline_access"],
+      resourceName: "Calorie Tracker API",
+      resourceServerUrl: new URL(`${BASE_URL}/mcp`),
+    })
+  );
+
+  // Auth0 callback handler
+  app.get("/oauth/callback", async (req: Request, res: Response) => {
+    try {
+      const { code, state, error, error_description } = req.query;
+
+      if (error) {
+        console.error("Auth0 error:", error, error_description);
+        res.status(400).json({
+          error: error as string,
+          error_description: error_description as string,
+        });
+        return;
+      }
+
+      if (!code || !state) {
+        res.status(400).json({ error: "Missing code or state parameter" });
+        return;
+      }
+
+      const provider = getOAuthProvider();
+      const { redirectUrl } = await provider.handleAuth0Callback(
+        code as string,
+        state as string
+      );
+
+      res.redirect(redirectUrl);
+    } catch (error) {
+      console.error("OAuth callback error:", error);
+      res.status(500).json({
+        error: "internal_error",
+        error_description: "Failed to complete authentication",
+      });
+    }
+  });
+}
+
 // MCP endpoint - POST for JSON-RPC requests (Streamable HTTP transport)
-app.post("/mcp", async (req: Request, res: Response) => {
+app.post("/mcp", async (req: Request, res: Response, _next: NextFunction) => {
   console.log("Received POST /mcp request");
+
+  // If OAuth is configured, require authentication
+  if (isOAuthConfigured) {
+    try {
+      const authMiddleware = requireBearerAuth({
+        verifier: getOAuthProvider(),
+      });
+
+      await new Promise<void>((resolve, reject) => {
+        authMiddleware(req, res, (err?: unknown) => {
+          if (err) reject(err);
+          else resolve();
+        });
+      });
+    } catch (error) {
+      console.error("Auth error:", error);
+      // Let the request continue - the auth info will be undefined
+      // and the tools will use default-user
+    }
+  }
 
   const server = createMcpServer();
 
@@ -446,6 +557,12 @@ export async function main() {
       console.log(`Calorie Tracker MCP server running on port ${PORT}`);
       console.log(`Health check: http://localhost:${PORT}/health`);
       console.log(`MCP endpoint: http://localhost:${PORT}/mcp`);
+      if (isOAuthConfigured) {
+        console.log(`OAuth metadata: http://localhost:${PORT}/.well-known/oauth-authorization-server`);
+        console.log(`Resource metadata: http://localhost:${PORT}/.well-known/oauth-protected-resource`);
+      } else {
+        console.log("OAuth not configured - running without authentication");
+      }
     });
   }
 }

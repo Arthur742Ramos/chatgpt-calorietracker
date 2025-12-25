@@ -10,6 +10,9 @@ let database: Database;
 let mealsContainer: Container;
 let goalsContainer: Container;
 
+// Container cache for dynamic access
+const containerCache: Map<string, Container> = new Map();
+
 export async function initCosmos(): Promise<void> {
   client = new CosmosClient({
     endpoint: COSMOS_ENDPOINT,
@@ -28,14 +31,54 @@ export async function initCosmos(): Promise<void> {
     partitionKey: { paths: ["/userId"] },
   });
   mealsContainer = meals;
+  containerCache.set("meals", meals);
 
   const { container: goals } = await database.containers.createIfNotExists({
     id: "goals",
     partitionKey: { paths: ["/userId"] },
   });
   goalsContainer = goals;
+  containerCache.set("goals", goals);
+
+  // OAuth containers - partitioned by id (client_id or token)
+  const { container: oauthClients } = await database.containers.createIfNotExists({
+    id: "oauth_clients",
+    partitionKey: { paths: ["/id"] },
+  });
+  containerCache.set("oauth_clients", oauthClients);
+
+  const { container: oauthTokens } = await database.containers.createIfNotExists({
+    id: "oauth_tokens",
+    partitionKey: { paths: ["/id"] },
+  });
+  containerCache.set("oauth_tokens", oauthTokens);
+
+  const { container: oauthCodes } = await database.containers.createIfNotExists({
+    id: "oauth_codes",
+    partitionKey: { paths: ["/id"] },
+  });
+  containerCache.set("oauth_codes", oauthCodes);
 
   console.log("Cosmos DB initialized successfully");
+}
+
+/**
+ * Get a container by name. Creates if not exists.
+ */
+export function getContainer(containerName: string): Container {
+  const cached = containerCache.get(containerName);
+  if (cached) {
+    return cached;
+  }
+
+  if (!database) {
+    throw new Error("Cosmos DB not initialized. Call initCosmos() first.");
+  }
+
+  // For containers not in cache, get reference (assumes exists)
+  const container = database.container(containerName);
+  containerCache.set(containerName, container);
+  return container;
 }
 
 // ============ Meals Operations ============

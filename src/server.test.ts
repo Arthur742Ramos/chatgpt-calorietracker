@@ -31,10 +31,10 @@ describe("API endpoints", () => {
       const response = await request(app).get("/health");
 
       expect(response.status).toBe(200);
-      expect(response.body).toEqual({
-        status: "healthy",
-        service: "calorie-tracker",
-      });
+      expect(response.body.status).toBe("healthy");
+      expect(response.body.service).toBe("calorie-tracker");
+      // oauth field indicates whether Auth0 is configured
+      expect(["configured", "not_configured"]).toContain(response.body.oauth);
     });
   });
 
