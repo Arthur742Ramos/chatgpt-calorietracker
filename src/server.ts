@@ -357,6 +357,10 @@ function getUserIdFromExtra(extra: ToolExtra): string {
 // Express app
 export const app = express();
 
+// Trust proxy - required when running behind Azure Container Apps load balancer
+// This allows express-rate-limit and other middleware to correctly identify clients
+app.set("trust proxy", 1);
+
 // Configure CORS for ChatGPT
 app.use(
   cors({
